@@ -15,7 +15,11 @@ import javax.inject.Inject
 data class MapUiState(
     val potholes: List<Pothole> = emptyList(),
     val roadRatings: List<RoadRating> = emptyList(),
-    val isLoading: Boolean = false
+    val isLoading: Boolean = false,
+    val sourceAddress: String = "",
+    val destinationAddress: String = "",
+    val userLocation: android.location.Location? = null,
+    val isLocationPermissionGranted: Boolean = false
 )
 
 @HiltViewModel
@@ -43,6 +47,25 @@ class MapViewModel @Inject constructor(
             }
             
             _uiState.value = _uiState.value.copy(isLoading = false)
+        }
+    }
+
+    fun onSourceAddressChange(address: String) {
+        _uiState.value = _uiState.value.copy(sourceAddress = address)
+    }
+
+    fun onDestinationAddressChange(address: String) {
+        _uiState.value = _uiState.value.copy(destinationAddress = address)
+    }
+
+    fun onLocationPermissionResult(isGranted: Boolean) {
+        _uiState.value = _uiState.value.copy(isLocationPermissionGranted = isGranted)
+    }
+    
+    fun onUserLocationUpdate(location: android.location.Location) {
+        _uiState.value = _uiState.value.copy(userLocation = location)
+        if (_uiState.value.sourceAddress.isEmpty()) {
+            _uiState.value = _uiState.value.copy(sourceAddress = "My Location")
         }
     }
 }
