@@ -20,8 +20,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -59,49 +57,37 @@ fun DetectionScreen(
     val view = LocalView.current
     val density = LocalDensity.current
 
-    // --- Permission State ---
+    // Permissions logic
     var hasCameraPermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         )
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
-        onResult = { granted ->
-            hasCameraPermission = granted
-        }
+        onResult = { granted -> hasCameraPermission = granted }
     )
 
-    // Request permission on launch if not granted
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) {
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
-    // Status Bar Configuration for Detection
     SideEffect {
         val window = (view.context as Activity).window
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
     }
 
-    val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> = remember {
-        ProcessCameraProvider.getInstance(context)
-    }
+    val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
-
     var boundingBoxes by remember { mutableStateOf<List<BoundingBox>>(emptyList()) }
     var inferenceTime by remember { mutableLongStateOf(0L) }
 
     DisposableEffect(Unit) {
-        onDispose {
-            cameraExecutor.shutdown()
-        }
+        onDispose { cameraExecutor.shutdown() }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -111,7 +97,6 @@ fun DetectionScreen(
                     val previewView = PreviewView(ctx)
                     cameraProviderFuture.addListener({
                         val cameraProvider = cameraProviderFuture.get()
-
                         val preview = Preview.Builder().build().also {
                             it.setSurfaceProvider(previewView.surfaceProvider)
                         }
@@ -121,45 +106,34 @@ fun DetectionScreen(
                             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                             .build()
                             .also {
-                                it.setAnalyzer(cameraExecutor,
-                                    PotholeAnalyzer(ctx) { results: List<BoundingBox>, time: Long ->
-                                        boundingBoxes = results
-                                        inferenceTime = time
-                                        viewModel.onPotholesDetected(results)
-                                    })
+                                it.setAnalyzer(cameraExecutor, PotholeAnalyzer(ctx) { results, time ->
+                                    boundingBoxes = results
+                                    inferenceTime = time
+                                    viewModel.onPotholesDetected(results)
+                                })
                             }
-
-                        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                         try {
                             cameraProvider.unbindAll()
-                            cameraProvider.bindToLifecycle(
-                                lifecycleOwner,
-                                cameraSelector,
-                                preview,
-                                imageAnalysis
-                            )
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
+                            cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageAnalysis)
+                        } catch (e: Exception) { e.printStackTrace() }
                     }, ContextCompat.getMainExecutor(ctx))
                     previewView
                 },
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Overlays (Bounding Boxes)
+            // Bounding Box Overlays
             Canvas(modifier = Modifier.fillMaxSize()) {
                 boundingBoxes.forEach { box ->
                     val left = box.x1 * size.width
                     val top = box.y1 * size.height
                     val width = (box.x2 - box.x1) * size.width
                     val height = (box.y2 - box.y1) * size.height
-
-                    val strokeWidthPx = with(density) { 3.dp.toPx() }
+                    val strokeWidthPx = 3.dp.toPx()
 
                     drawRect(
-                        color = Color.White,
+                        color = Color.Yellow,
                         topLeft = Offset(left, top),
                         size = Size(width, height),
                         style = Stroke(width = strokeWidthPx)
@@ -168,130 +142,64 @@ fun DetectionScreen(
                     drawContext.canvas.nativeCanvas.apply {
                         val text = "${box.clsName.uppercase()} ${(box.cnf * 100).toInt()}%"
                         val paint = Paint().apply {
-                            color = android.graphics.Color.WHITE
-                            textSize = 36f
+                            color = android.graphics.Color.YELLOW
+                            textSize = 40f
                             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                         }
                         drawText(text, left, top - 15f, paint)
                     }
                 }
             }
-        } else {
-            // Placeholder when permission is denied
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Face,
-                    contentDescription = null,
-                    tint = Color.LightGray,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(Modifier.height(16.dp))
-                Text("Camera permission is required", color = Color.White)
-                Button(
-                    onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-                    modifier = Modifier.padding(top = 8.dp)
-                ) {
-                    Text("Grant Permission")
-                }
-            }
         }
 
-        // Header and Bottom Card
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .padding(20.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color.Black.copy(alpha = 0.5f),
-                    onClick = onNavigateBack
+        // UI Overlay (Header and Analytics Card)
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = onNavigateBack,
+                    modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
                 ) {
-                    Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
                 }
                 Spacer(modifier = Modifier.width(16.dp))
-                Text(
-                    "DETECTION MODE",
-                    color = Color.White,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp,
-                    fontSize = 18.sp
-                )
+                Text("DETECTION LIVE", color = Color.White, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
             }
 
             Spacer(modifier = Modifier.weight(1f))
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.85f)),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.8f)),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    val potholeCount = boundingBoxes.count { it.clsName.contains("Pothole", ignoreCase = true) }
+                Column(modifier = Modifier.padding(24.dp)) {
+                    val count = boundingBoxes.count { it.clsName.contains("Pothole", ignoreCase = true) }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                "Live Road Analytics",
-                                color = Color.White.copy(alpha = 0.6f),
-                                style = MaterialTheme.typography.labelMedium
-                            )
-                            Text(
-                                if (potholeCount == 0) "ROAD CLEAR" else "$potholeCount POTHOLES DETECTED",
-                                color = if (potholeCount == 0) Color.Green else Color.White,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 20.sp
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .size(12.dp)
-                                .background(if (potholeCount == 0) Color.Green else Color.Red, CircleShape)
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(8.dp).background(if(count > 0) Color.Red else Color.Green, CircleShape))
+                        Spacer(Modifier.width(8.dp))
+                        Text(if(count > 0) "$count POTHOLES FOUND" else "ROAD SCANNING...", color = Color.White, fontWeight = FontWeight.Bold)
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        InfoLabel(label = "Latency", value = "${inferenceTime}ms")
-                        InfoLabel(label = "Confidence", value = if (boundingBoxes.isEmpty()) "0%" else "${(boundingBoxes.maxOf { it.cnf } * 100).toInt()}%")
-                        InfoLabel(label = "Status", value = "Scanning")
+                    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        InfoItem("Latency", "${inferenceTime}ms")
+                        InfoItem("Confidence", if(boundingBoxes.isEmpty()) "0%" else "${(boundingBoxes.maxOf { it.cnf } * 100).toInt()}%")
+                        InfoItem("GPS", "Active")
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.navigationBarsPadding())
-            Spacer(modifier = Modifier.height(60.dp))
+            Spacer(modifier = Modifier.height(40.dp))
         }
     }
 }
 
 @Composable
-fun InfoLabel(label: String, value: String) {
+fun InfoItem(label: String, value: String) {
     Column {
-        Text(label, color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-        Text(value, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+        Text(label, color = Color.Gray, fontSize = 11.sp)
+        Text(value, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
     }
 }

@@ -4,8 +4,10 @@ import com.example.urbaneye.domain.model.Pothole
 import com.example.urbaneye.domain.model.PotholeSeverity
 import com.example.urbaneye.domain.model.RoadRating
 import com.example.urbaneye.domain.repository.PotholeRepository
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -15,57 +17,73 @@ import javax.inject.Singleton
 
 @Singleton
 class PotholeRepositoryImpl @Inject constructor(
-    private val firestore: FirebaseFirestore
+    private val database: FirebaseDatabase
 ) : PotholeRepository {
 
-    private val potholesCollection = firestore.collection("potholes")
+    /**
+     * Path structure for UrbanEye data in Realtime Database.
+     */
+    private val potholesRef = database.getReference("artifacts")
+        .child("urban-eye-app")
+        .child("public")
+        .child("data")
+        .child("potholes")
 
     override fun getPotholes(): Flow<List<Pothole>> = callbackFlow {
-        val subscription = potholesCollection
-            .orderBy("timestamp", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    close(error)
-                    return@addSnapshotListener
-                }
-                if (snapshot != null) {
-                    val potholes = snapshot.documents.mapNotNull { doc ->
-                        try {
-                            Pothole(
-                                id = doc.id,
-                                latitude = doc.getDouble("latitude") ?: 0.0,
-                                longitude = doc.getDouble("longitude") ?: 0.0,
-                                severity = PotholeSeverity.valueOf(doc.getString("severity") ?: "MEDIUM"),
-                                size = doc.getDouble("size") ?: 0.0,
-                                depth = doc.getDouble("depth") ?: 0.0,
-                                timestamp = doc.getLong("timestamp") ?: 0L
-                            )
-                        } catch (e: Exception) {
-                            null
-                        }
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val potholes = snapshot.children.mapNotNull { child ->
+                    try {
+                        Pothole(
+                            id = child.key ?: "",
+                            latitude = child.child("latitude").getValue(Double::class.java) ?: 0.0,
+                            longitude = child.child("longitude").getValue(Double::class.java) ?: 0.0,
+                            severity = PotholeSeverity.valueOf(
+                                child.child("severity").getValue(String::class.java) ?: "MEDIUM"
+                            ),
+                            reportedBy = child.child("reportedBy").getValue(String::class.java) ?: "Unknown User",
+                            reporterId = child.child("reporterId").getValue(String::class.java) ?: "",
+                            timestamp = child.child("timestamp").getValue(Long::class.java) ?: 0L,
+                            confidence = child.child("confidence").getValue(Float::class.java) ?: 0f
+                        )
+                    } catch (e: Exception) {
+                        null
                     }
-                    trySend(potholes)
-                }
-            }
-        awaitClose { subscription.remove() }
-    }
+                }.reversed()
 
-    override fun getRoadRatings(): Flow<List<RoadRating>> = callbackFlow {
-        // For simplicity, we can derive ratings or have a separate collection
-        // For now, let's keep it empty or implement logic later
-        trySend(emptyList<RoadRating>())
-        awaitClose { }
+                trySend(potholes)
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                close(error.toException())
+            }
+        }
+
+        potholesRef.addValueEventListener(listener)
+        awaitClose { potholesRef.removeEventListener(listener) }
     }
 
     override suspend fun reportPothole(pothole: Pothole) {
-        val data = hashMapOf(
-            "latitude" to pothole.latitude,
-            "longitude" to pothole.longitude,
-            "severity" to pothole.severity.name,
-            "size" to pothole.size,
-            "depth" to pothole.depth,
-            "timestamp" to pothole.timestamp
-        )
-        potholesCollection.add(data).await()
+        try {
+            val data = hashMapOf(
+                "latitude" to pothole.latitude,
+                "longitude" to pothole.longitude,
+                "severity" to pothole.severity.name,
+                "reportedBy" to pothole.reportedBy,
+                "reporterId" to pothole.reporterId,
+                "timestamp" to pothole.timestamp,
+                "confidence" to pothole.confidence
+            )
+
+            // Generate a unique ID using push() and save the data
+            potholesRef.push().setValue(data).await()
+        } catch (e: Exception) {
+            throw e
+        }
+    }
+
+    override fun getRoadRatings(): Flow<List<RoadRating>> = callbackFlow {
+        trySend(emptyList())
+        awaitClose { }
     }
 }

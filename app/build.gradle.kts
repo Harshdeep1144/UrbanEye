@@ -72,11 +72,17 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
+    implementation(libs.firebase.database)
     implementation(libs.firebase.analytics)
+    implementation(libs.firebase.sessions)
+    // Adding the ktx-common equivalent if needed, though usually included in the main artifacts now
+    implementation("com.google.firebase:firebase-common-ktx")
 
     // Map & Location Services
     implementation(libs.osmdroid.android)
     implementation(libs.play.services.location)
+    implementation(libs.play.services.maps)
+    implementation(libs.maps.compose)
 
     // CameraX
     implementation(libs.androidx.camera.core)
