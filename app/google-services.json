@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "764838567146",
+    "project_id": "urbaneye-a307b",
+    "storage_bucket": "urbaneye-a307b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:764838567146:android:48a122196db9dff6fbcb93",
+        "android_client_info": {
+          "package_name": "com.example.urbaneye"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNXu6G6aMIQco0AOsgxBoFN9ICuozmpdc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
