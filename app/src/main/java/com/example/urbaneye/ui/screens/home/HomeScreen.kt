@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.PackageManager
+import android.location.Geocoder
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -35,9 +36,13 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("MissingPermission")
@@ -48,6 +53,7 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    val scope = rememberCoroutineScope()
 
     // --- Status Bar Configuration ---
     SideEffect {
@@ -62,7 +68,7 @@ fun HomeScreen(
         )
     )
 
-    // Mock State
+    // State Management
     var sourceAddress by remember { mutableStateOf("") }
     var destinationAddress by remember { mutableStateOf("") }
     val historyItems = listOf(
@@ -74,45 +80,65 @@ fun HomeScreen(
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    // Initialize Map with repetition controls fixed
+    // Initialize Map
     val mapView = remember {
         MapView(context).apply {
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
-
-            // Fix: Prevent multiple worlds/repetition
             isHorizontalMapRepetitionEnabled = false
             isVerticalMapRepetitionEnabled = false
-
-            // Set zoom limits to prevent zooming out too far into "empty" space
             minZoomLevel = 4.0
             maxZoomLevel = 20.0
-
-            // Fix for unresolved references: Use literal bounds or the instance TileSystem
-            // standard web mercator limits
-            setScrollableAreaLimitLatitude(85.0511, -85.0511, 0)
-            setScrollableAreaLimitLongitude(-180.0, 180.0, 0)
-
             controller.setZoom(16.0)
-            controller.setCenter(GeoPoint(12.9716, 77.5946))
+            controller.setCenter(GeoPoint(12.9716, 77.5946)) // Default Bangalore
         }
     }
 
+    // Lifecycle management for OSMDroid (Crucial for physical devices)
+    DisposableEffect(mapView) {
+        mapView.onResume()
+        onDispose {
+            mapView.onPause()
+        }
+    }
+
+    // Helper: Fetch location and Reverse Geocode
+    val requestLocationUpdate = {
+        fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+            .addOnSuccessListener { location ->
+                location?.let {
+                    val geoPoint = GeoPoint(it.latitude, it.longitude)
+                    mapView.controller.animateTo(geoPoint)
+
+                    // Reverse Geocode to get address string
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val geocoder = Geocoder(context, Locale.getDefault())
+                            val addresses = geocoder.getFromLocation(it.latitude, it.longitude, 1)
+                            val addressText = if (!addresses.isNullOrEmpty()) {
+                                addresses[0].getAddressLine(0).split(",")[0] // Short address
+                            } else {
+                                "Current Location"
+                            }
+                            withContext(Dispatchers.Main) {
+                                sourceAddress = addressText
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                sourceAddress = "Current Location"
+                            }
+                        }
+                    }
+                }
+            }
+    }
+
+    // Permission Launcher
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
-                .addOnSuccessListener { loc ->
-                    loc?.let { mapView.controller.animateTo(GeoPoint(it.latitude, it.longitude)) }
-                }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
-            != PackageManager.PERMISSION_GRANTED) {
-            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            requestLocationUpdate()
         }
     }
 
@@ -138,7 +164,8 @@ fun HomeScreen(
                     onSourceChange = { sourceAddress = it },
                     destination = destinationAddress,
                     onDestinationChange = { destinationAddress = it },
-                    history = historyItems
+                    history = historyItems,
+                    onCheckSafety = onNavigateToDetection
                 )
             }
         }
@@ -173,13 +200,20 @@ fun HomeScreen(
                         }
                     }
 
+                    // --- Updated Locate Me Button ---
                     Surface(
                         shape = CircleShape,
                         color = Color.White,
                         shadowElevation = 6.dp,
                         onClick = {
-                            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
-                                loc?.let { mapView.controller.animateTo(GeoPoint(it.latitude, it.longitude)) }
+                            val permissionCheck = ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.ACCESS_FINE_LOCATION
+                            )
+                            if (permissionCheck == PackageManager.PERMISSION_GRANTED) {
+                                requestLocationUpdate()
+                            } else {
+                                locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                             }
                         }
                     ) {
@@ -197,7 +231,7 @@ fun HomeScreen(
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "Locate Me",
+                                "Use Current Location",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.Black
@@ -216,7 +250,8 @@ fun SearchAndHistorySheet(
     onSourceChange: (String) -> Unit,
     destination: String,
     onDestinationChange: (String) -> Unit,
-    history: List<HistoryItem>
+    history: List<HistoryItem>,
+    onCheckSafety: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -241,15 +276,15 @@ fun SearchAndHistorySheet(
                 // Pickup Input
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        Icons.Default.PlayArrow,
+                        Icons.Default.Person,
                         contentDescription = null,
                         tint = Color(0xFF4285F4),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                     TextField(
                         value = source,
                         onValueChange = onSourceChange,
-                        placeholder = { Text("Current Location", fontSize = 14.sp) },
+                        placeholder = { Text("Enter pickup location", fontSize = 14.sp) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
@@ -273,7 +308,7 @@ fun SearchAndHistorySheet(
                         Icons.Default.LocationOn,
                         contentDescription = null,
                         tint = Color(0xFFEA4335),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                     TextField(
                         value = destination,
@@ -310,7 +345,9 @@ fun SearchAndHistorySheet(
             contentPadding = PaddingValues(bottom = 16.dp)
         ) {
             items(history) { item ->
-                HistoryRow(item)
+                HistoryRow(item) {
+                    onDestinationChange(item.subtitle)
+                }
             }
         }
 
@@ -320,7 +357,7 @@ fun SearchAndHistorySheet(
             exit = fadeOut()
         ) {
             Button(
-                onClick = { /* Navigation Logic */ },
+                onClick = onCheckSafety,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 16.dp)
@@ -337,11 +374,11 @@ fun SearchAndHistorySheet(
 }
 
 @Composable
-fun HistoryRow(item: HistoryItem) {
+fun HistoryRow(item: HistoryItem, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { /* Select destination */ },
+            .clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(
