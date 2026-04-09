@@ -51,7 +51,8 @@ class ProfileViewModel @Inject constructor(
         _userState.value = UserState.Loading
         viewModelScope.launch {
             try {
-                auth.signInWithEmailAndPassword(email, pass).await()
+                // FIXED: Added .trim() to email and password
+                auth.signInWithEmailAndPassword(email.trim(), pass.trim()).await()
                 checkUserStatus()
             } catch (e: Exception) {
                 _userState.value = UserState.Error(e.message ?: "Login failed")
@@ -63,11 +64,15 @@ class ProfileViewModel @Inject constructor(
         _userState.value = UserState.Loading
         viewModelScope.launch {
             try {
-                println("DEBUG: Starting Auth Create")
-                val result = auth.createUserWithEmailAndPassword(email, pass).await()
+                // FIXED: Added .trim() to email and password to prevent formatting errors
+                val trimmedEmail = email.trim()
+                val trimmedPass = pass.trim()
+
+                println("DEBUG: Starting Auth Create for: $trimmedEmail")
+                val result = auth.createUserWithEmailAndPassword(trimmedEmail, trimmedPass).await()
 
                 println("DEBUG: Auth Success, Starting Firestore Write")
-                val user = User(uid = result.user!!.uid, name = name, email = email)
+                val user = User(uid = result.user!!.uid, name = name, email = trimmedEmail)
                 firestore.collection("users").document(user.uid).set(user).await()
 
                 println("DEBUG: Firestore Success")

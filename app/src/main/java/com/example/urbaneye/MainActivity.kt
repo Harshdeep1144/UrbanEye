@@ -4,18 +4,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -26,7 +24,25 @@ import com.example.urbaneye.ui.screens.detection.DetectionScreen
 import com.example.urbaneye.ui.screens.home.HomeScreen
 import com.example.urbaneye.ui.screens.profile.ProfileScreen
 import com.example.urbaneye.ui.theme.UrbanEyeTheme
+import com.example.urbaneye.ui.theme.LocalIsDarkTheme
+import com.example.urbaneye.ui.theme.LocalThemeToggle
+import android.content.Context
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import dagger.hilt.android.AndroidEntryPoint
+
+sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
+    object Splash    : Screen("splash",    "Splash",    Icons.Rounded.Home)
+    object Home      : Screen("home",      "Home",      Icons.Rounded.Map)
+    object Detection : Screen("detection", "Scan",      Icons.Rounded.PhotoCamera)
+    object Agent     : Screen("agent",     "AI",        Icons.Rounded.AutoAwesome)
+    object Profile   : Screen("profile",   "Profile",   Icons.Rounded.Person)
+}
+
+private val BottomNavScreens = listOf(Screen.Home, Screen.Detection, Screen.Agent, Screen.Profile)
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -34,109 +50,95 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            UrbanEyeTheme {
-                val navController = rememberNavController()
-                val items = listOf(
-                    Screen.Home,
-                    Screen.Detection,
-                    Screen.Agent,
-                    Screen.Profile
-                )
-                
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentDestination = navBackStackEntry?.destination
-                val showBottomBar = currentDestination?.route in items.map { it.route }
+            val sharedPrefs = remember { getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
+            val systemDark = isSystemInDarkTheme()
+            var isDarkTheme by remember { mutableStateOf(sharedPrefs.getBoolean("dark_mode", systemDark)) }
+
+            val toggleTheme: (Boolean) -> Unit = { isDark ->
+                isDarkTheme = isDark
+                sharedPrefs.edit().putBoolean("dark_mode", isDark).apply()
+            }
+
+            CompositionLocalProvider(
+                LocalThemeToggle provides toggleTheme,
+                LocalIsDarkTheme provides isDarkTheme
+            ) {
+                UrbanEyeTheme(darkTheme = isDarkTheme) {
+                    val navController = rememberNavController()
+                    val backstackEntry by navController.currentBackStackEntryAsState()
+                    val currentDest    = backstackEntry?.destination
+                val showNav        = currentDest?.route in BottomNavScreens.map { it.route }
 
                 Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    bottomBar = {
-                        if (showBottomBar) {
+                    modifier       = Modifier.fillMaxSize(),
+                    containerColor = MaterialTheme.colorScheme.background,
+                    bottomBar      = {
+                        AnimatedVisibility(
+                            visible = showNav,
+                            enter   = fadeIn(tween(200)) + slideInVertically { it },
+                            exit    = fadeOut(tween(200)) + slideOutVertically { it },
+                        ) {
                             NavigationBar(
-                                containerColor = Color.White,
-                                tonalElevation = 0.dp
+                                containerColor  = MaterialTheme.colorScheme.surface,
+                                tonalElevation  = 0.dp,
                             ) {
-                                items.forEach { screen ->
-                                    val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
+                                BottomNavScreens.forEach { screen ->
+                                    val selected = currentDest?.hierarchy?.any { it.route == screen.route } == true
                                     NavigationBarItem(
                                         icon = {
                                             Icon(
-                                                imageVector = when (screen) {
-                                                    Screen.Home -> Icons.Filled.Home
-                                                    Screen.Detection -> Icons.Filled.Search
-                                                    Screen.Agent -> Icons.Filled.Build
-                                                    Screen.Profile -> Icons.Filled.Person
-                                                    else -> Icons.Filled.Home
-                                                },
-                                                contentDescription = null,
-                                                modifier = Modifier.size(26.dp)
+                                                screen.icon, null,
+                                                modifier = Modifier.size(if (selected) 24.dp else 22.dp),
                                             )
                                         },
-                                        label = { Text(screen.title) },
+                                        label    = { Text(screen.title, style = MaterialTheme.typography.labelSmall) },
                                         selected = selected,
-                                        colors = NavigationBarItemDefaults.colors(
-                                            selectedIconColor = Color.Black,
-                                            selectedTextColor = Color.Black,
-                                            unselectedIconColor = Color.Gray,
-                                            unselectedTextColor = Color.Gray,
-                                            indicatorColor = Color.Transparent
+                                        colors   = NavigationBarItemDefaults.colors(
+                                            selectedIconColor   = MaterialTheme.colorScheme.primary,
+                                            selectedTextColor   = MaterialTheme.colorScheme.primary,
+                                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            indicatorColor      = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                                         ),
-                                        onClick = {
+                                        onClick  = {
                                             navController.navigate(screen.route) {
-                                                popUpTo(navController.graph.findStartDestination().id) {
-                                                    saveState = true
-                                                }
-                                                launchSingleTop = true
-                                                restoreState = true
+                                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                                launchSingleTop = true; restoreState = true
                                             }
-                                        }
+                                        },
                                     )
                                 }
                             }
                         }
-                    }
+                    },
                 ) { innerPadding ->
-                    // Removed padding(innerPadding) to allow content to go behind status/nav bars
                     NavHost(
-                        navController = navController,
+                        navController    = navController,
                         startDestination = Screen.Splash.route,
-                        modifier = Modifier.fillMaxSize()
+                        modifier         = Modifier.fillMaxSize(),
                     ) {
                         composable(Screen.Splash.route) {
-                            SplashScreen(onNavigateToMain = {
+                            SplashScreen {
                                 navController.navigate(Screen.Home.route) {
                                     popUpTo(Screen.Splash.route) { inclusive = true }
                                 }
-                            })
+                            }
                         }
                         composable(Screen.Home.route) {
-                            // Pass innerPadding to screens that need to avoid the bottom bar
                             HomeScreen(
-                                contentPadding = innerPadding,
-                                onNavigateToDetection = {
-                                    navController.navigate(Screen.Detection.route)
-                                }
+                                contentPadding       = innerPadding,
+                                onNavigateToDetection = { navController.navigate(Screen.Detection.route) },
                             )
                         }
                         composable(Screen.Detection.route) {
-                            DetectionScreen()
+                            DetectionScreen(onNavigateBack = { navController.popBackStack() })
                         }
-                        composable(Screen.Agent.route) {
-                            AgentScreen()
-                        }
-                        composable(Screen.Profile.route) {
-                            ProfileScreen()
-                        }
+                        composable(Screen.Agent.route)   { AgentScreen() }
+                        composable(Screen.Profile.route) { ProfileScreen() }
                     }
                 }
             }
         }
     }
 }
-
-sealed class Screen(val route: String, val title: String) {
-    object Splash : Screen("splash", "Splash")
-    object Home : Screen("home", "Home")
-    object Detection : Screen("detection", "Detection")
-    object Agent : Screen("agent", "Agent")
-    object Profile : Screen("profile", "Profile")
 }

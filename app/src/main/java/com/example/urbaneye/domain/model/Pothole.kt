@@ -23,3 +23,4 @@ data class Pothole(
     val size: Double = 0.0,
     val depth: Double = 0.0
 )
+
