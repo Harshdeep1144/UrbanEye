@@ -90,7 +90,8 @@ fun DetectionScreen(
         onDispose { cameraExecutor.shutdown() }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    val cs = MaterialTheme.colorScheme
+    Box(modifier = Modifier.fillMaxSize().background(cs.background)) {
         if (hasCameraPermission) {
             AndroidView(
                 factory = { ctx ->
@@ -157,29 +158,29 @@ fun DetectionScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     onClick = onNavigateBack,
-                    modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    modifier = Modifier.background(cs.onBackground.copy(alpha = 0.5f), CircleShape)
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = cs.background)
                 }
                 Spacer(modifier = Modifier.width(16.dp))
-                Text("DETECTION LIVE", color = Color.White, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Text("DETECTION LIVE", color = cs.onBackground, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
             }
 
             Spacer(modifier = Modifier.weight(1f))
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.8f)),
+                colors = CardDefaults.cardColors(containerColor = cs.surfaceVariant.copy(alpha = 0.9f)),
                 shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                border = BorderStroke(1.dp, cs.onSurfaceVariant.copy(alpha = 0.2f))
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
                     val count = boundingBoxes.count { it.clsName.contains("Pothole", ignoreCase = true) }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(8.dp).background(if(count > 0) Color.Red else Color.Green, CircleShape))
+                        Box(modifier = Modifier.size(8.dp).background(if(count > 0) cs.error else cs.primary, CircleShape))
                         Spacer(Modifier.width(8.dp))
-                        Text(if(count > 0) "$count POTHOLES FOUND" else "ROAD SCANNING...", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(if(count > 0) "$count POTHOLES FOUND" else "ROAD SCANNING...", color = cs.onSurfaceVariant, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -198,8 +199,9 @@ fun DetectionScreen(
 
 @Composable
 fun InfoItem(label: String, value: String) {
+    val cs = MaterialTheme.colorScheme
     Column {
-        Text(label, color = Color.Gray, fontSize = 11.sp)
-        Text(value, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
+        Text(label, color = cs.onSurfaceVariant.copy(alpha = 0.7f), fontSize = 11.sp)
+        Text(value, color = cs.onSurfaceVariant, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
     }
 }

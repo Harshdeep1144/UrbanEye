@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
@@ -26,8 +27,8 @@ import kotlinx.coroutines.delay
 fun SplashScreen(onNavigateToMain: () -> Unit) {
     val view = LocalView.current
     val scale = remember { Animatable(0f) }
+    val colorScheme = MaterialTheme.colorScheme
 
-    // Configure status bar for Splash (Transparent with Light Icons)
     SideEffect {
         val window = (view.context as Activity).window
         window.statusBarColor = Color.Transparent.toArgb()
@@ -52,11 +53,11 @@ fun SplashScreen(onNavigateToMain: () -> Unit) {
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black) // Uber Black
+            .background(Color.Black)
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Image(
-                painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                painter = painterResource(id = R.drawable.urban_eye_icon),
                 contentDescription = "Logo",
                 modifier = Modifier
                     .size(180.dp)
@@ -66,8 +67,7 @@ fun SplashScreen(onNavigateToMain: () -> Unit) {
                 text = "URBAN EYE",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = Color.White,
-                letterSpacing = 4.sp
+                color = colorScheme.primary,
             )
         }
     }

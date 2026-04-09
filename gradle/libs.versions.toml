@@ -24,6 +24,7 @@ googleServices = "4.4.2"
 guavaListenableFuture = "9999.0-empty-to-avoid-conflict-with-guava"
 remoteCreationCore = "1.0.0-alpha07"
 firebaseSessions = "3.0.4"
+foundation = "1.10.6"
 
 [libraries]
 # Core AndroidX & Compose
@@ -77,6 +78,7 @@ androidx-remote-creation-core = { group = "androidx.compose.remote", name = "rem
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+androidx-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

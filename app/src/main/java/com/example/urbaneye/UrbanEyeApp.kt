@@ -9,7 +9,7 @@ import java.io.File
 class UrbanEyeApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        // Initialize osmdroid configuration
+        // Initialize osmdroid configuration for OpenStreetMap.
         Configuration.getInstance().userAgentValue = packageName
         val osmConfig = File(cacheDir, "osmdroid")
         Configuration.getInstance().osmdroidTileCache = osmConfig
